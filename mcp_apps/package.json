@@ -1,0 +1,29 @@
+{
+  "name": "oereb-mcp-apps",
+  "version": "0.1.0",
+  "description": "Lokaler MCP-Apps-Server für den ÖREB-Web-GIS-Client des Kantons Solothurn.",
+  "type": "module",
+  "private": true,
+  "bin": {
+    "oereb-mcp-apps": "./dist/index.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "inspect": "npx @modelcontextprotocol/inspector node dist/index.js --stdio"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/ext-apps": "1.7.1",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "zod": "4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "25.6.2",
+    "typescript": "6.0.3",
+    "vitest": "4.1.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
