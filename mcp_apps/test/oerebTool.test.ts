@@ -26,4 +26,13 @@ describe("ÖREB-App-Tool", () => {
     expect(html).toContain("ui/notifications/tool-result");
     expect(html).toContain("In geo.so.ch öffnen");
   });
+
+  it("liefert eine App mit korrekt escapter EGRID-Prüfung", () => {
+    const html = createOerebAppHtml();
+    const regexLine = html.split("\n").find((line) => line.includes("const egridPattern"));
+
+    expect(regexLine).toContain("const egridPattern = /^CH\\d{12}$/;");
+    expect(regexLine).not.toContain("^CH\\\\d{12}$");
+    expect(new Function(`${regexLine} return egridPattern.test("CH733270063212");`)()).toBe(true);
+  });
 });

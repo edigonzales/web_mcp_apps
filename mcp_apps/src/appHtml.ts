@@ -202,7 +202,7 @@ export function createOerebAppHtml(): string {
         const appInfo = { name: "${OEREB_APP_TITLE}", version: "${SERVER_VERSION}" };
         const protocolVersion = "${MCP_APPS_PROTOCOL_VERSION}";
         const baseUrl = "${OEREB_BASE_URL}";
-        const egridPattern = /^CH\\d{12}$/;
+        const egridPattern = /^CH\d{12}$/;
         let nextRequestId = 1;
         const pendingRequests = new Map();
 
@@ -246,14 +246,16 @@ export function createOerebAppHtml(): string {
           return url.toString();
         }
 
-        function renderEgrid(egrid, url = buildUrl(egrid)) {
-          if (!egridPattern.test(egrid)) {
+        function renderEgrid(egrid, url = buildUrl(egrid.trim())) {
+          const normalizedEgrid = egrid.trim();
+          if (!egridPattern.test(normalizedEgrid)) {
+            console.warn("Ungültiges EGRID erhalten.", { egrid });
             elements.status.textContent = "Ungültiges EGRID erhalten.";
             return;
           }
 
           elements.status.textContent = "ÖREB-Kataster geladen.";
-          elements.egrid.textContent = egrid;
+          elements.egrid.textContent = normalizedEgrid;
           elements.openLink.href = url;
           elements.gisFrame.src = url;
           elements.empty.hidden = true;
