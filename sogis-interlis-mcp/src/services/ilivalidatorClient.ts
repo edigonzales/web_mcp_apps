@@ -1,3 +1,6 @@
+import { readFile } from "node:fs/promises";
+import { basename, isAbsolute } from "node:path";
+import { fileURLToPath } from "node:url";
 import type {
   FetchLike,
   ParsedCsvLog,
@@ -17,19 +20,32 @@ export type IlivalidatorClientOptions = {
   baseUrl: string;
   timeoutMs: number;
   maxLogBytes: number;
+  allowedFileRefOrigins?: string[];
   fetch?: FetchLike;
+};
+
+type ResolvedValidationFile = {
+  name: string;
+  mimeType?: string;
+  bytes: Uint8Array;
 };
 
 export class IlivalidatorClient {
   readonly baseUrl: string;
   readonly timeoutMs: number;
   readonly maxLogBytes: number;
+  private readonly allowedFileRefOrigins: Set<string>;
   private readonly fetchImpl: FetchLike;
 
   constructor(options: IlivalidatorClientOptions) {
     this.baseUrl = options.baseUrl;
     this.timeoutMs = options.timeoutMs;
     this.maxLogBytes = options.maxLogBytes;
+    this.allowedFileRefOrigins = new Set(
+      (options.allowedFileRefOrigins ?? [])
+        .map((origin) => normalizeOrigin(origin))
+        .filter((origin): origin is string => origin !== null)
+    );
     this.fetchImpl = options.fetch ?? globalThis.fetch;
   }
 
@@ -47,30 +63,15 @@ export class IlivalidatorClient {
   }
 
   async startJob(input: StartValidationJobInput): Promise<ValidationJobStart> {
-    if (input.fileRefs !== undefined && input.fileRefs.length > 0 && (input.files === undefined || input.files.length === 0)) {
-      throw new SogisMcpError(
-        "FILE_REFS_UNSUPPORTED",
-        "Datei-Referenzen werden in diesem Prototyp noch nicht unterstützt. Bitte files[].dataBase64 übergeben.",
-        { fileRefs: input.fileRefs }
-      );
-    }
-
-    if (input.files === undefined || input.files.length === 0) {
+    const files = await this.resolveValidationFiles(input);
+    if (files.length === 0) {
       throw new SogisMcpError("NO_VALIDATION_FILE", "Es wurde keine INTERLIS-Transferdatei übergeben.");
     }
 
     const formData = new FormData();
-    for (const file of input.files) {
-      if (file.name.trim() === "") {
-        throw new SogisMcpError("INVALID_FILE_NAME", "Eine übergebene Datei hat keinen Namen.");
-      }
-      const bytes = decodeBase64(file.dataBase64, file.name);
-      if (bytes.byteLength === 0) {
-        throw new SogisMcpError("EMPTY_VALIDATION_FILE", `Die Datei ${file.name} ist leer.`);
-      }
-
-      const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength) as ArrayBuffer;
-      const blob = new Blob([arrayBuffer], { type: file.mimeType ?? "application/octet-stream" });
+    for (const file of files) {
+      const arrayBuffer = file.bytes.buffer.slice(file.bytes.byteOffset, file.bytes.byteOffset + file.bytes.byteLength) as ArrayBuffer;
+      const blob = new Blob([arrayBuffer], { type: file.mimeType ?? guessMimeType(file.name) });
       formData.append("files", blob, file.name);
     }
 
@@ -109,7 +110,7 @@ export class IlivalidatorClient {
       jobId: extracted.jobId,
       operationLocation: extracted.operationLocation,
       ...(input.profile !== undefined ? { profile: input.profile } : {}),
-      files: input.files.map((file) => ({ name: file.name })),
+      files: files.map((file) => ({ name: file.name })),
       raw
     };
   }
@@ -168,6 +169,82 @@ export class IlivalidatorClient {
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  private async resolveValidationFiles(input: StartValidationJobInput): Promise<ResolvedValidationFile[]> {
+    const resolved: ResolvedValidationFile[] = [];
+
+    for (const file of input.files ?? []) {
+      const name = requireNonBlank(file.name, "files[].name");
+      const bytes = decodeBase64(file.dataBase64, name);
+      assertNonEmptyFile(bytes, name);
+      resolved.push({
+        name,
+        ...(file.mimeType !== undefined ? { mimeType: file.mimeType } : {}),
+        bytes
+      });
+    }
+
+    for (const fileRef of input.fileRefs ?? []) {
+      resolved.push(await this.resolveFileRef(fileRef));
+    }
+
+    return resolved;
+  }
+
+  private async resolveFileRef(fileRef: string): Promise<ResolvedValidationFile> {
+    const ref = requireNonBlank(fileRef, "fileRefs[]");
+    const url = parseAbsoluteUrl(ref);
+
+    if (url !== null) {
+      if (url.protocol === "file:") {
+        return readLocalFileRef(fileURLToPath(url), ref);
+      }
+      if (url.protocol === "https:") {
+        return this.readHttpsFileRef(url);
+      }
+      throw new SogisMcpError(
+        "UNSUPPORTED_FILE_REF",
+        "Datei-Referenzen unterstützen nur absolute lokale Pfade, file:// URLs oder erlaubte https:// URLs.",
+        { fileRef: ref, protocol: url.protocol }
+      );
+    }
+
+    if (!isAbsolute(ref)) {
+      throw new SogisMcpError(
+        "UNSUPPORTED_FILE_REF",
+        "Lokale Datei-Referenzen müssen absolute Pfade sein. Bei HTTP-Transporten sind lokale Pfade Pfade auf dem Server.",
+        { fileRef: ref }
+      );
+    }
+
+    return readLocalFileRef(ref, ref);
+  }
+
+  private async readHttpsFileRef(url: URL): Promise<ResolvedValidationFile> {
+    if (!this.allowedFileRefOrigins.has(url.origin)) {
+      throw new SogisMcpError(
+        "FILE_REF_ORIGIN_NOT_ALLOWED",
+        "Diese https-Datei-Referenz ist nicht erlaubt. Trage die Origin in SOGIS_ALLOWED_FILE_REF_ORIGINS ein.",
+        {
+          fileRef: url.toString(),
+          origin: url.origin,
+          allowedOrigins: [...this.allowedFileRefOrigins]
+        }
+      );
+    }
+
+    const response = await this.fetchWithTimeout(url.toString());
+    await assertOk(response, "FILE_REF_HTTP_ERROR", "Datei-Referenz konnte nicht geladen werden.", url.toString());
+    const bytes = Buffer.from(await response.arrayBuffer());
+    const name = fileNameFromPath(url.pathname) ?? "transfer.xtf";
+    assertNonEmptyFile(bytes, name);
+
+    return {
+      name,
+      ...(response.headers.get("content-type") !== null ? { mimeType: response.headers.get("content-type") ?? undefined } : {}),
+      bytes
+    };
   }
 }
 
@@ -409,6 +486,64 @@ function safeParseCsv(content: string): ParsedCsvLog | undefined {
     return parseCsvLog(content);
   } catch {
     return undefined;
+  }
+}
+
+async function readLocalFileRef(path: string, originalRef: string): Promise<ResolvedValidationFile> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await readFile(path);
+  } catch (error) {
+    throw new SogisMcpError("FILE_REF_READ_FAILED", "Lokale Datei-Referenz konnte nicht gelesen werden.", {
+      fileRef: originalRef,
+      path,
+      cause: toErrorMessage(error)
+    });
+  }
+
+  const name = basename(path) || "transfer.xtf";
+  assertNonEmptyFile(bytes, name);
+  return {
+    name,
+    mimeType: guessMimeType(name),
+    bytes
+  };
+}
+
+function parseAbsoluteUrl(value: string): URL | null {
+  try {
+    const url = new URL(value);
+    return url.protocol === "" ? null : url;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeOrigin(value: string): string | null {
+  try {
+    const url = new URL(value);
+    return url.origin;
+  } catch {
+    return null;
+  }
+}
+
+function fileNameFromPath(pathname: string): string | null {
+  const name = basename(decodeURIComponent(pathname));
+  return name.trim() === "" ? null : name;
+}
+
+function guessMimeType(fileName: string): string {
+  const lower = fileName.toLowerCase();
+  if (lower.endsWith(".xtf") || lower.endsWith(".xml") || lower.endsWith(".itf")) {
+    return "application/xml";
+  }
+  return "application/octet-stream";
+}
+
+function assertNonEmptyFile(bytes: Uint8Array, fileName: string): void {
+  if (bytes.byteLength === 0) {
+    throw new SogisMcpError("EMPTY_VALIDATION_FILE", `Die Datei ${fileName} ist leer.`, { fileName });
   }
 }
 

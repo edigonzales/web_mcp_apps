@@ -22,12 +22,12 @@ export type RegisterToolsOptions = {
 const validationFileSchema = z.object({
   name: z.string().min(1).describe("Dateiname, zum Beispiel example.xtf."),
   mimeType: z.string().optional().describe("MIME-Type der Datei, zum Beispiel application/xml."),
-  dataBase64: z.string().min(1).describe("Base64-kodierter Dateiinhalt.")
+  dataBase64: z.string().min(1).describe("Base64-kodierter Dateiinhalt. Fallback fuer Hosts ohne Datei-Referenzen.")
 });
 
 const validateTransferInputSchema = {
-  files: z.array(validationFileSchema).optional().describe("INTERLIS-Transferdateien als Base64-Inhalte."),
-  fileRefs: z.array(z.string()).optional().describe("Host-Dateireferenzen. In v1 noch nicht implementiert."),
+  files: z.array(validationFileSchema).optional().describe("INTERLIS-Transferdateien als Base64-Inhalte. Nicht per Shell-Ausgabe in den Chat-Kontext laden."),
+  fileRefs: z.array(z.string().min(1)).optional().describe("Serverseitig aufloesbare Datei-Referenzen: absolute lokale Pfade, file:// URLs oder erlaubte https:// URLs. Fuer Goose bevorzugen."),
   profile: z.string().optional().describe("Optionales ilivalidator-Profil, zum Beispiel Nutzungsplanung.")
 };
 
@@ -62,7 +62,7 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions):
     "validate_interlis_transfer",
     {
       title: "INTERLIS-Transfer validieren",
-      description: "Startet eine Validierung einer Base64-kodierten INTERLIS-Transferdatei beim SOGIS ilivalidator.",
+      description: "Startet eine Validierung beim SOGIS ilivalidator. Bei lokalen Dateien fileRefs verwenden und grosse Base64-Inhalte nicht mit cat/base64 in den Chat-Kontext ausgeben.",
       inputSchema: validateTransferInputSchema,
       annotations: {
         readOnlyHint: false,

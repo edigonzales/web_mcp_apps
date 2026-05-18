@@ -1,8 +1,13 @@
 import assert from "node:assert/strict";
+import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
+import { pathToFileURL } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { RESOURCE_MIME_TYPE } from "@modelcontextprotocol/ext-apps/server";
+import type { SogisInterlisConfig } from "../src/config.js";
 import { createMcpServer } from "../src/mcp/server.js";
 import {
   ILIVALIDATOR_JOB_VIEWER_RESOURCE_URI,
@@ -92,9 +97,120 @@ describe("sogis-interlis-mcp MCP-Server", () => {
       await server.close();
     }
   });
+
+  it("startet Validierungsjob mit lokaler Datei-Referenz", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "sogis-interlis-mcp-"));
+    const filePath = join(tempDir, "local.xtf");
+    await writeFile(filePath, "<TRANSFER/>", "utf8");
+
+    const { client, server } = await createConnectedClient(createFetchMock());
+    try {
+      const result = await client.callTool({
+        name: "validate_interlis_transfer",
+        arguments: {
+          fileRefs: [filePath]
+        }
+      });
+
+      assert.equal(result.isError, false);
+      assert.equal(result.structuredContent?.jobId, "job-123");
+      assert.deepEqual(result.structuredContent?.files, [{ name: "local.xtf" }]);
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("startet Validierungsjob mit file-URL-Referenz", async () => {
+    const tempDir = await mkdtemp(join(tmpdir(), "sogis-interlis-mcp-"));
+    const filePath = join(tempDir, "file-url.xtf");
+    await writeFile(filePath, "<TRANSFER/>", "utf8");
+
+    const { client, server } = await createConnectedClient(createFetchMock());
+    try {
+      const result = await client.callTool({
+        name: "validate_interlis_transfer",
+        arguments: {
+          fileRefs: [pathToFileURL(filePath).toString()]
+        }
+      });
+
+      assert.equal(result.isError, false);
+      assert.deepEqual(result.structuredContent?.files, [{ name: "file-url.xtf" }]);
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(tempDir, { recursive: true, force: true });
+    }
+  });
+
+  it("liefert strukturierten Fehler fuer fehlende lokale Datei-Referenz", async () => {
+    const { client, server } = await createConnectedClient(createFetchMock());
+    try {
+      const result = await client.callTool({
+        name: "validate_interlis_transfer",
+        arguments: {
+          fileRefs: ["/tmp/sogis-interlis-mcp-fehlt.xtf"]
+        }
+      });
+
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent?.errorCode, "FILE_REF_READ_FAILED");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("lehnt https-Datei-Referenzen ohne erlaubte Origin ab", async () => {
+    const { client, server } = await createConnectedClient(createFetchMock());
+    try {
+      const result = await client.callTool({
+        name: "validate_interlis_transfer",
+        arguments: {
+          fileRefs: ["https://uploads.example.test/remote.xtf"]
+        }
+      });
+
+      assert.equal(result.isError, true);
+      assert.equal(result.structuredContent?.errorCode, "FILE_REF_ORIGIN_NOT_ALLOWED");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("laedt https-Datei-Referenzen von erlaubten Origins", async () => {
+    const { client, server } = await createConnectedClient(
+      createFetchMock({
+        remoteFiles: {
+          "https://uploads.example.test/remote.xtf": "<TRANSFER/>"
+        }
+      }),
+      {
+        allowedFileRefOrigins: ["https://uploads.example.test"]
+      }
+    );
+    try {
+      const result = await client.callTool({
+        name: "validate_interlis_transfer",
+        arguments: {
+          fileRefs: ["https://uploads.example.test/remote.xtf"]
+        }
+      });
+
+      assert.equal(result.isError, false);
+      assert.equal(result.structuredContent?.jobId, "job-123");
+      assert.deepEqual(result.structuredContent?.files, [{ name: "remote.xtf" }]);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
 });
 
-async function createConnectedClient(fetch: FetchLike) {
+async function createConnectedClient(fetch: FetchLike, configOverrides: Partial<SogisInterlisConfig> = {}) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const server = createMcpServer({
     fetch,
@@ -104,7 +220,9 @@ async function createConnectedClient(fetch: FetchLike) {
       httpTimeoutMs: 30000,
       maxLogBytes: 2000000,
       allowedOrigins: [],
-      sampleXtfPath: "/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf"
+      allowedFileRefOrigins: [],
+      sampleXtfPath: "/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf",
+      ...configOverrides
     }
   });
   const client = new Client(
@@ -124,9 +242,16 @@ async function createConnectedClient(fetch: FetchLike) {
   return { client, server };
 }
 
-function createFetchMock(): FetchLike {
+function createFetchMock(options: { remoteFiles?: Record<string, string> } = {}): FetchLike {
   return async (input: string | URL, init?: RequestInit) => {
     const url = new URL(input.toString());
+
+    if (options.remoteFiles?.[url.toString()] !== undefined) {
+      return new Response(options.remoteFiles[url.toString()], {
+        status: 200,
+        headers: { "content-type": "application/xml" }
+      });
+    }
 
     if (url.pathname === "/ilivalidator/api/profiles") {
       return jsonResponse({

@@ -21,6 +21,10 @@ export type ValidationFileInput = {
 
 export type StartValidationJobInput = {
   files?: ValidationFileInput[];
+  /**
+   * Serverseitig aufloesbare Datei-Referenzen:
+   * absolute lokale Pfade, file:// URLs oder erlaubte https:// URLs.
+   */
   fileRefs?: string[];
   profile?: string;
 };

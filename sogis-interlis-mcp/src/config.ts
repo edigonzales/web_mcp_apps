@@ -12,6 +12,7 @@ export type SogisInterlisConfig = {
   httpTimeoutMs: number;
   maxLogBytes: number;
   allowedOrigins: string[];
+  allowedFileRefOrigins: string[];
   sampleXtfPath: string;
 };
 
@@ -22,6 +23,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): SogisInterlisC
     httpTimeoutMs: parsePositiveInteger(env.SOGIS_HTTP_TIMEOUT_MS, DEFAULT_HTTP_TIMEOUT_MS),
     maxLogBytes: parsePositiveInteger(env.SOGIS_MAX_LOG_BYTES, DEFAULT_MAX_LOG_BYTES),
     allowedOrigins: parseCsv(env.SOGIS_ALLOWED_ORIGINS),
+    allowedFileRefOrigins: parseCsv(env.SOGIS_ALLOWED_FILE_REF_ORIGINS),
     sampleXtfPath: env.SOGIS_SAMPLE_XTF_PATH ?? DEFAULT_SAMPLE_XTF_PATH
   };
 }

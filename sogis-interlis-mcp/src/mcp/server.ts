@@ -19,6 +19,7 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     baseUrl: serverConfig.ilivalidatorBaseUrl,
     timeoutMs: serverConfig.httpTimeoutMs,
     maxLogBytes: serverConfig.maxLogBytes,
+    allowedFileRefOrigins: serverConfig.allowedFileRefOrigins,
     fetch: options.fetch
   });
   const modelfinderClient = new ModelfinderClient({

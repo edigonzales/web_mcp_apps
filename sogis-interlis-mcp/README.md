@@ -37,6 +37,7 @@ npm run inspect
 | `SOGIS_HTTP_TIMEOUT_MS` | `30000` |
 | `SOGIS_MAX_LOG_BYTES` | `2000000` |
 | `SOGIS_ALLOWED_ORIGINS` | leer |
+| `SOGIS_ALLOWED_FILE_REF_ORIGINS` | leer |
 | `SOGIS_SAMPLE_XTF_PATH` | `/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf` |
 
 ## Tools
@@ -59,6 +60,26 @@ Der Job-Viewer verwendet die MCP-App-Bridge, um `get_validation_job` und `get_va
 
 ## Beispiel: Validierungsjob starten
 
+Fuer lokale Hosts wie Goose ueber stdio ist `fileRefs` der bevorzugte Weg. Goose soll die Datei nicht per `cat` oder `base64` in den Chat-Kontext ausgeben, sondern nur den serverseitig lesbaren Pfad uebergeben:
+
+```json
+{
+  "fileRefs": [
+    "/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf"
+  ]
+}
+```
+
+Unterstuetzte Datei-Referenzen:
+
+- absolute lokale Pfade auf dem Rechner, auf dem der MCP-Server laeuft
+- `file://` URLs
+- `https://` URLs, wenn deren Origin in `SOGIS_ALLOWED_FILE_REF_ORIGINS` erlaubt ist
+
+Bei HTTP-Transporten sind lokale Pfade immer Pfade auf dem Server, nicht auf dem Goose-Client. Fuer Remote-Setups muss Goose oder ein vorgelagerter Dienst die Datei zuerst unter einer fuer den MCP-Server erreichbaren HTTPS-URL bereitstellen.
+
+Base64-Inhalte bleiben als Fallback unterstuetzt:
+
 ```json
 {
   "files": [
@@ -72,28 +93,16 @@ Der Job-Viewer verwendet die MCP-App-Bridge, um `get_validation_job` und `get_va
 }
 ```
 
-`fileRefs` sind im Schema sichtbar, werden in diesem Prototyp aber noch nicht umgesetzt. Verwende `files[].dataBase64`.
-
 ## Lokaler Smoke-Test mit XTF-Testdatei
 
 Die Datei `/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf` ist ein realer, fehlerfreier Testfall mit dem Modell `SO_AFU_ABBAUSTELLEN_Publikation_20221103`. Sie wird nicht ins Repo kopiert und nicht in Unit-Tests vorausgesetzt.
 
-Base64 vorbereiten:
-
-```bash
-base64 -i "${SOGIS_SAMPLE_XTF_PATH:-/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf}" > /tmp/ch.so.afu.abbaustellen.xtf.base64
-```
-
-Dann `validate_interlis_transfer` mit folgendem Payload aufrufen:
+`validate_interlis_transfer` mit folgendem Payload aufrufen:
 
 ```json
 {
-  "files": [
-    {
-      "name": "ch.so.afu.abbaustellen.xtf",
-      "mimeType": "application/xml",
-      "dataBase64": "<Inhalt von /tmp/ch.so.afu.abbaustellen.xtf.base64>"
-    }
+  "fileRefs": [
+    "/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf"
   ]
 }
 ```
@@ -103,9 +112,10 @@ Erwartung:
 - Der Upload startet einen ilivalidator-Job.
 - `get_validation_job` liefert Status und Log-URLs.
 - `summarize_validation_result` meldet bei erfolgreichem Abschluss keine Fehler.
+- `get_validation_log` ist fuer gezielte Log-Abfragen oder die App gedacht, nicht als erster Chat-Schritt fuer grosse Logs.
 
 ## Bekannte Einschränkungen
 
 - Modelfinder ist in v1 eine URL-/Frontend-Integration.
 - iframe-Einbettung kann je nach Host-CSP oder Frame-Policy blockiert werden; der Viewer zeigt immer einen Deep Link.
-- Datei-Upload verwendet v1 Base64-Inhalte; Host-spezifische File-References sind ein Erweiterungspunkt.
+- Datei-Upload unterstuetzt lokale und erlaubte HTTPS-Datei-Referenzen sowie Base64-Inhalte als Fallback.

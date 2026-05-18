@@ -202,6 +202,8 @@ Unterstuetzte Env-Variablen:
   - Default: `2000000`
 - `SOGIS_ALLOWED_ORIGINS`
   - Default: leer
+- `SOGIS_ALLOWED_FILE_REF_ORIGINS`
+  - Default: leer
 - `SOGIS_SAMPLE_XTF_PATH`
   - Default: `/Users/stefan/Downloads/ch.so.afu.abbaustellen.xtf`
 
@@ -225,7 +227,7 @@ MCP-App-Resources:
 - `ui://ilivalidator/job-viewer`
 - `ui://modelfinder/model-viewer`
 
-`validate_interlis_transfer` verwendet in v1 Base64-Dateiinhalte ueber `files[].dataBase64`. `fileRefs` sind im Schema sichtbar, aber noch nicht umgesetzt. Implementiere `fileRefs` nicht nebenbei, nur weil du Upload-Code beruehrst.
+`validate_interlis_transfer` verwendet bevorzugt `fileRefs` fuer absolute lokale Pfade, `file://` URLs oder erlaubte `https://` URLs. Base64-Dateiinhalte ueber `files[].dataBase64` bleiben als Fallback erhalten. Bei HTTP-Transporten sind lokale Pfade serverseitige Pfade; Client-Dateien muessen als serverseitig erreichbare HTTPS-URL bereitgestellt werden.
 
 Der Job-Viewer nutzt die MCP-App-Bridge fuer Tool-Aufrufe wie `get_validation_job` und `get_validation_log`. Wenn ein Host Tool-Aufrufe aus Apps nicht proxyt, muessen Text-, Link- und Copy-Fallbacks weiterhin sinnvoll bleiben.
 
