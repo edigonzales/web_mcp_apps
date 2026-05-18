@@ -47,8 +47,12 @@ export function createIlivalidatorJobViewerHtml(): string {
 
       * { box-sizing: border-box; }
 
+      html {
+        margin: 0;
+        padding: 0;
+      }
+
       body {
-        min-height: 100vh;
         margin: 0;
         background: var(--background);
         color: var(--text);
@@ -58,7 +62,8 @@ export function createIlivalidatorJobViewerHtml(): string {
       .shell {
         display: grid;
         grid-template-rows: auto 1fr;
-        min-height: 100vh;
+        max-height: 960px;
+        overflow: hidden;
       }
 
       header {
@@ -232,7 +237,7 @@ export function createIlivalidatorJobViewerHtml(): string {
     </style>
   </head>
   <body>
-    <div class="shell">
+    <div id="appRoot" class="shell">
       <header>
         <h1>${ILIVALIDATOR_JOB_VIEWER_TITLE}</h1>
         <div id="headerMeta" class="meta">Warte auf Job...</div>
@@ -278,7 +283,9 @@ export function createIlivalidatorJobViewerHtml(): string {
       (() => {
         const appInfo = { name: "${ILIVALIDATOR_JOB_VIEWER_TITLE}", version: "${SERVER_VERSION}" };
         const protocolVersion = "${MCP_APPS_PROTOCOL_VERSION}";
+        const MAX_EMBED_HEIGHT_PX = 960;
         let nextRequestId = 1;
+        let sizeFrame = null;
         const pendingRequests = new Map();
         const state = {
           hostCapabilities: {},
@@ -295,6 +302,7 @@ export function createIlivalidatorJobViewerHtml(): string {
         };
 
         const elements = {
+          appRoot: document.getElementById("appRoot"),
           headerMeta: document.getElementById("headerMeta"),
           jobId: document.getElementById("jobId"),
           statusBadge: document.getElementById("statusBadge"),
@@ -314,6 +322,10 @@ export function createIlivalidatorJobViewerHtml(): string {
           explainButton: document.getElementById("explainButton"),
           modelButton: document.getElementById("modelButton"),
           logContent: document.getElementById("logContent")
+        };
+        const sizeState = {
+          width: 0,
+          height: 0
         };
 
         function post(message) {
@@ -392,7 +404,7 @@ export function createIlivalidatorJobViewerHtml(): string {
           elements.profile.textContent = state.profile || "-";
           elements.headerMeta.textContent = state.jobId ? "Job " + state.jobId : "Warte auf Job...";
           updateLogButtons();
-          sendSize();
+          scheduleSizeUpdate();
         }
 
         function renderJob(job) {
@@ -405,7 +417,7 @@ export function createIlivalidatorJobViewerHtml(): string {
           elements.headerMeta.textContent = "Job " + job.jobId;
           elements.statusNote.textContent = job.retryAfterSeconds ? "Nächste automatische Aktualisierung in " + job.retryAfterSeconds + " s." : "";
           updateLogButtons();
-          sendSize();
+          scheduleSizeUpdate();
         }
 
         function updateLogButtons() {
@@ -472,7 +484,7 @@ export function createIlivalidatorJobViewerHtml(): string {
           const log = state.logs[state.activeLog];
           if (!log) {
             elements.logContent.innerHTML = '<div class="empty">Kein ' + escapeHtml(state.activeLog) + '-Log geladen.</div>';
-            sendSize();
+            scheduleSizeUpdate();
             return;
           }
 
@@ -481,7 +493,7 @@ export function createIlivalidatorJobViewerHtml(): string {
           } else {
             elements.logContent.innerHTML = '<pre class="log">' + escapeHtml(log.content || "") + '</pre>';
           }
-          sendSize();
+          scheduleSizeUpdate();
         }
 
         function renderRows(rows) {
@@ -600,9 +612,31 @@ export function createIlivalidatorJobViewerHtml(): string {
         }
 
         function sendSize() {
-          const height = Math.ceil(document.documentElement.getBoundingClientRect().height);
-          const width = Math.ceil(document.documentElement.getBoundingClientRect().width || window.innerWidth);
+          const root = elements.appRoot;
+          if (!(root instanceof HTMLElement)) return;
+
+          const width = Math.ceil(root.scrollWidth || root.getBoundingClientRect().width || window.innerWidth);
+          const measuredHeight = Math.ceil(root.scrollHeight || root.getBoundingClientRect().height || 0);
+          const height = Math.min(MAX_EMBED_HEIGHT_PX, measuredHeight);
+
+          if (width === sizeState.width && height === sizeState.height) {
+            return;
+          }
+
+          sizeState.width = width;
+          sizeState.height = height;
           notify("ui/notifications/size-changed", { width, height });
+        }
+
+        function scheduleSizeUpdate() {
+          if (sizeFrame !== null) {
+            return;
+          }
+
+          sizeFrame = window.requestAnimationFrame(() => {
+            sizeFrame = null;
+            sendSize();
+          });
         }
 
         function handleRequest(message) {
@@ -652,9 +686,10 @@ export function createIlivalidatorJobViewerHtml(): string {
         elements.modelButton.addEventListener("click", lookupModel);
 
         if ("ResizeObserver" in window) {
-          const resizeObserver = new ResizeObserver(sendSize);
-          resizeObserver.observe(document.documentElement);
-          resizeObserver.observe(document.body);
+          const resizeObserver = new ResizeObserver(scheduleSizeUpdate);
+          if (elements.appRoot instanceof HTMLElement) {
+            resizeObserver.observe(elements.appRoot);
+          }
         }
 
         request("ui/initialize", {

@@ -58,6 +58,8 @@ npm run inspect
 
 Der Job-Viewer verwendet die MCP-App-Bridge, um `get_validation_job` und `get_validation_log` aufzurufen. Falls ein Host keine Tool-Aufrufe aus Apps proxyt, bleiben Text-, Link- und Copy-Fallbacks sichtbar.
 
+Der Modelfinder-Viewer zeigt fuer einen prompt-gesteuerten Suchbegriff eine eigene Trefferliste, eine lokale Detailansicht aus den JSON-Suchmetadaten und eine eingebettete UML-Vorschau. Falls ein Host iframe-Einbettungen blockiert, bleiben direkte Links zur Rohsuche, zur Detailseite und zur UML-Ansicht sichtbar.
+
 ## Beispiel: Validierungsjob starten
 
 Fuer lokale Hosts wie Goose ueber stdio ist `fileRefs` der bevorzugte Weg. Goose soll die Datei nicht per `cat` oder `base64` in den Chat-Kontext ausgeben, sondern nur den serverseitig lesbaren Pfad uebergeben:
@@ -116,6 +118,6 @@ Erwartung:
 
 ## Bekannte Einschränkungen
 
-- Modelfinder ist in v1 eine URL-/Frontend-Integration.
-- iframe-Einbettung kann je nach Host-CSP oder Frame-Policy blockiert werden; der Viewer zeigt immer einen Deep Link.
+- Der Modelfinder bleibt eine Adapter-Schicht ueber den externen SOGIS-Dienst; die App rendert Trefferliste und Detailansicht lokal, verwendet fuer UML aber weiterhin die externe Modelfinder-Seite.
+- iframe-Einbettung kann je nach Host-CSP oder Frame-Policy blockiert werden; der Viewer zeigt deshalb immer sichtbare Direktlinks fuer Rohsuche, Detail und UML.
 - Datei-Upload unterstuetzt lokale und erlaubte HTTPS-Datei-Referenzen sowie Base64-Inhalte als Fallback.

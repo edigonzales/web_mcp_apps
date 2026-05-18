@@ -68,7 +68,7 @@ export function registerResources(server: McpServer, config: SogisInterlisConfig
     MODELFINDER_MODEL_VIEWER_RESOURCE_URI,
     {
       title: MODELFINDER_MODEL_VIEWER_TITLE,
-      description: "MCP-App zum Anzeigen eines Modelfinder-Deep-Links oder iframe-Embeds.",
+      description: "MCP-App mit eigener Modelfinder-Trefferliste, Detailansicht und UML-Vorschau.",
       _meta: {
         ui: {
           csp: {

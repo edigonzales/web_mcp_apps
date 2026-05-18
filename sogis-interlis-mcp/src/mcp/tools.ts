@@ -208,9 +208,9 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions):
       }
     },
     async ({ query, ilisite, expanded }) => toolResult(async () => {
-      const result = modelfinderClient.search({ query, ilisite, expanded });
+      const result = await modelfinderClient.search({ query, ilisite, expanded });
       return {
-        text: `Modelfinder-Suche fuer "${result.query}": ${result.url}`,
+        text: `Modelfinder-Suche fuer "${result.query}": ${result.totalModelCount} Treffer.`,
         structuredContent: result,
         meta: {
           ui: {
@@ -264,9 +264,11 @@ export function registerTools(server: McpServer, options: RegisterToolsOptions):
       }
     },
     async (input) => toolResult(async () => {
-      const context = modelfinderClient.getContext(input);
+      const context = await modelfinderClient.getContext(input);
       return {
-        text: `Modelfinder-Kontext: ${context.url}`,
+        text: context.query === null
+          ? "Modelfinder-Kontext ohne Suchbegriff geladen."
+          : `Modelfinder-Kontext fuer "${context.query}": ${context.totalModelCount} Treffer.`,
         structuredContent: context,
         meta: {
           ui: {

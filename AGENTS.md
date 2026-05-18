@@ -182,7 +182,7 @@ Der Suchservice liefert Kandidaten. Der Dataservice liefert offizielle Attribute
 - `src/config.ts`: Env-Konfiguration und Defaults.
 - `src/constants.ts`: Serverdaten, Resource-URIs, Defaults und Titel.
 - `src/services/ilivalidatorClient.ts`: HTTP-Client, Job-Start, Job-Status, Logs und Normalisierung.
-- `src/services/modelfinderClient.ts`: Deep-Link- und Embed-Kontext fuer Modelfinder.
+- `src/services/modelfinderClient.ts`: Modelfinder-Suche, Link-Berechnung und Kontext-Normalisierung.
 - `src/types/`: Typen fuer ilivalidator und Modelfinder.
 - `src/util/`: Fehler-, URL- und Log-Parsing-Helfer.
 - `src/ui/`: HTML fuer Job-Viewer und Model-Viewer.
@@ -231,12 +231,12 @@ MCP-App-Resources:
 
 Der Job-Viewer nutzt die MCP-App-Bridge fuer Tool-Aufrufe wie `get_validation_job` und `get_validation_log`. Wenn ein Host Tool-Aufrufe aus Apps nicht proxyt, muessen Text-, Link- und Copy-Fallbacks weiterhin sinnvoll bleiben.
 
-Der Modelfinder ist in v1 eine URL- und Frontend-Integration. iframe-Einbettung kann durch Host-CSP oder Frame-Policy blockiert werden, deshalb muss ein Deep Link erhalten bleiben.
+Der Modelfinder verwendet eine eigene Trefferliste und Detailansicht auf Basis der JSON-Suchantworten des externen Dienstes. Die UML-Vorschau bleibt eine externe Einbettung; bei Host-CSP oder Frame-Policy-Problemen muessen Direktlinks erhalten bleiben.
 
 ### Entwicklungsregeln fuer `sogis-interlis-mcp`
 
 - Behandle den ilivalidator als externe Quelle der Wahrheit. Keine eigene INTERLIS-Validierungslogik erfinden.
-- Behandle den Modelfinder als externes UI und URL-Ziel. Keine lokale Modellindexierung einfuehren.
+- Behandle den Modelfinder als externe Quelle der Wahrheit fuer Suche, Metadaten und UML-Ziele. Keine lokale Modellindexierung oder eigene UML-Ableitung einfuehren.
 - Halte HTTP-Timeouts, maximale Log-Groessen und URL-Normalisierung defensiv.
 - Beim Lesen von Logs `SOGIS_MAX_LOG_BYTES` respektieren und Truncation sichtbar machen.
 - Fehler sollen als klare Tool-Fehler mit strukturierten Details zurueckkommen, nicht als unklare Exceptions fuer den Host.
@@ -256,7 +256,7 @@ Der Modelfinder ist in v1 eine URL- und Frontend-Integration. iframe-Einbettung 
   - Job-ID-Extraktion aus `operation-location` und JSON-Fallbacks,
   - Job-Status, Retry-After und Log-URL-Normalisierung,
   - CSV- und Text-Log-Zusammenfassungen,
-  - Modelfinder-URL-Parameter und Embed-Kontext.
+  - Modelfinder-JSON-Suche, lokale `ilisite`-Filterung, Link-Berechnung und App-Kontext.
 
 ## MCP-App- und Host-Kompatibilitaet
 

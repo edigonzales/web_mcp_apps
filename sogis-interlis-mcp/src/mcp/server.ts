@@ -23,7 +23,9 @@ export function createMcpServer(options: CreateMcpServerOptions = {}): McpServer
     fetch: options.fetch
   });
   const modelfinderClient = new ModelfinderClient({
-    baseUrl: serverConfig.modelfinderBaseUrl
+    baseUrl: serverConfig.modelfinderBaseUrl,
+    timeoutMs: serverConfig.httpTimeoutMs,
+    fetch: options.fetch
   });
 
   const server = new McpServer(

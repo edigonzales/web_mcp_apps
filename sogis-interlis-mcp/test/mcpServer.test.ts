@@ -44,11 +44,73 @@ describe("sogis-interlis-mcp MCP-Server", () => {
     try {
       const jobViewer = await client.readResource({ uri: ILIVALIDATOR_JOB_VIEWER_RESOURCE_URI });
       const modelViewer = await client.readResource({ uri: MODELFINDER_MODEL_VIEWER_RESOURCE_URI });
+      const jobViewerText = "text" in jobViewer.contents[0] ? jobViewer.contents[0].text : "";
+      const modelViewerText = "text" in modelViewer.contents[0] ? modelViewer.contents[0].text : "";
 
       assert.equal(jobViewer.contents[0]?.mimeType, RESOURCE_MIME_TYPE);
       assert.equal(modelViewer.contents[0]?.mimeType, RESOURCE_MIME_TYPE);
-      assert.match("text" in jobViewer.contents[0] ? jobViewer.contents[0].text : "", /tools\/call/);
-      assert.match("text" in modelViewer.contents[0] ? modelViewer.contents[0].text : "", /iframe/);
+      assert.match(jobViewerText, /tools\/call/);
+      assert.match(modelViewerText, /Treffer/);
+      assert.match(modelViewerText, /iframe/);
+      assert.match(modelViewerText, /Mermaid-UML/);
+
+      assert.doesNotMatch(jobViewerText, /min-height:\s*100vh/);
+      assert.doesNotMatch(modelViewerText, /min-height:\s*100vh/);
+      assert.doesNotMatch(modelViewerText, /calc\(100vh -/);
+
+      assert.match(jobViewerText, /const MAX_EMBED_HEIGHT_PX = 960/);
+      assert.match(modelViewerText, /const MAX_EMBED_HEIGHT_PX = 960/);
+      assert.match(jobViewerText, /function scheduleSizeUpdate\(\)/);
+      assert.match(modelViewerText, /function scheduleSizeUpdate\(\)/);
+
+      assert.doesNotMatch(jobViewerText, /observe\(document\.documentElement\)/);
+      assert.doesNotMatch(jobViewerText, /observe\(document\.body\)/);
+      assert.doesNotMatch(modelViewerText, /observe\(document\.documentElement\)/);
+      assert.doesNotMatch(modelViewerText, /observe\(document\.body\)/);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("liefert gruppierte Modelfinder-Suchresultate mit UI-Metadaten", async () => {
+    const { client, server } = await createConnectedClient(createFetchMock());
+    try {
+      const result = await client.callTool({
+        name: "search_interlis_models",
+        arguments: {
+          query: "abbaustellen"
+        }
+      });
+
+      assert.equal(result.isError, false);
+      assert.equal(result.structuredContent?.totalModelCount, 2);
+      assert.equal(result.structuredContent?.groups?.[0]?.models?.[0]?.name, "SO_AFU_ABBAUSTELLEN_20210630");
+      assert.equal(result.structuredContent?.selectedModel?.name, "SO_AFU_ABBAUSTELLEN_20210630");
+      assert.equal(result._meta?.ui?.resourceUri, MODELFINDER_MODEL_VIEWER_RESOURCE_URI);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("liefert lokal gefilterten Modelfinder-Kontext", async () => {
+    const { client, server } = await createConnectedClient(createFetchMock());
+    try {
+      const result = await client.callTool({
+        name: "get_modelfinder_context",
+        arguments: {
+          query: "abbau",
+          ilisite: "models.geo.bl.ch",
+          expanded: false
+        }
+      });
+
+      assert.equal(result.isError, false);
+      assert.equal(result.structuredContent?.mode, "search-results");
+      assert.equal(result.structuredContent?.groups?.length, 1);
+      assert.equal(result.structuredContent?.groups?.[0]?.serverDisplayName, "models.geo.bl.ch");
+      assert.equal(result.structuredContent?.selectedModel?.name, "ch_bl_afk_augusta_raurica_rohstoffabbau_v1_0");
     } finally {
       await client.close();
       await server.close();
@@ -294,6 +356,17 @@ function createFetchMock(options: { remoteFiles?: Record<string, string> } = {})
       });
     }
 
+    if (url.pathname === "/modelfinder/models") {
+      const query = url.searchParams.get("query");
+      if (query === "abbaustellen") {
+        return jsonResponse(modelfinderAbbaustellenResponse);
+      }
+      if (query === "abbau") {
+        return jsonResponse(modelfinderAbbauResponse);
+      }
+      return jsonResponse([]);
+    }
+
     return jsonResponse({ message: `Unexpected URL ${url.toString()}` }, 404);
   };
 }
@@ -304,3 +377,73 @@ function jsonResponse(body: unknown, status = 200): Response {
     headers: { "content-type": "application/json" }
   });
 }
+
+const modelfinderAbbaustellenResponse = [
+  {
+    serverDisplayName: "geo.so.ch/models",
+    modelCount: 2,
+    models: [
+      {
+        serverUrl: "https://geo.so.ch/models",
+        name: "SO_AFU_ABBAUSTELLEN_20210630",
+        dispName: "SO_AFU_ABBAUSTELLEN_20210630 (2021-06-30)",
+        shortDescription: "",
+        version: "2021-06-30",
+        file: "AFU/SO_AFU_ABBAUSTELLEN_20210630.ili",
+        schemaLanguage: "ili2_3",
+        issuer: "http://geo.so.ch/models/AFU/",
+        precursorVersion: "",
+        technicalContact: "mailto:agi@so.ch",
+        furtherInformation: "",
+        md5: "57c77d80b853da132ef49a7e2db4c724",
+        tags: "",
+        organisationName: "Solothurn",
+        organisationAbbreviation: "SO"
+      },
+      {
+        serverUrl: "https://geo.so.ch/models",
+        name: "SO_AFU_ABBAUSTELLEN_Publikation_20221103",
+        dispName: "SO_AFU_ABBAUSTELLEN_Publikation_20221103 (2022-11-03)",
+        shortDescription: "",
+        version: "2022-11-03",
+        file: "AFU/SO_AFU_ABBAUSTELLEN_Publikation_20221103.ili",
+        schemaLanguage: "ili2_3",
+        issuer: "http://geo.so.ch/models/AFU/",
+        precursorVersion: "",
+        technicalContact: "mailto:agi@so.ch",
+        furtherInformation: "",
+        md5: "7a1ad9130204fb1f7804258ab3f52bf0",
+        tags: "",
+        organisationName: "Solothurn",
+        organisationAbbreviation: "SO"
+      }
+    ]
+  }
+];
+
+const modelfinderAbbauResponse = [
+  ...modelfinderAbbaustellenResponse,
+  {
+    serverDisplayName: "models.geo.bl.ch",
+    modelCount: 1,
+    models: [
+      {
+        serverUrl: "https://models.geo.bl.ch",
+        name: "ch_bl_afk_augusta_raurica_rohstoffabbau_v1_0",
+        dispName: "ch_bl_afk_augusta_raurica_rohstoffabbau_v1_0 (2024-02-16)",
+        shortDescription: "",
+        version: "2024-02-16",
+        file: "afk/ch_bl_afk_augusta_raurica_rohstoffabbau_v1_0.ili",
+        schemaLanguage: "ili2_3",
+        issuer: "http://models.geo.bl.ch/AFK/",
+        precursorVersion: "",
+        technicalContact: "mailto:support.gis@bl.ch",
+        furtherInformation: "https://geo.bl.ch",
+        md5: "297f91cd29a6fc534cd27272cb76781c",
+        tags: "",
+        organisationName: "Basel-Landschaft",
+        organisationAbbreviation: "BL"
+      }
+    ]
+  }
+];
